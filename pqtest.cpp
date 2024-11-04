@@ -7,28 +7,30 @@ using namespace std;
 
 class PriorityQueue {
 private :
+// priority queue for severity, timer vector for wait time
+// order vector for preserving patient arrival order
+// patientID vector for easier identification in output
 priority_queue<int> pq;
 vector<chrono::time_point<std::chrono::system_clock>> timers;
 vector<int> order;
+vector<int> patientID;
+int lastPatient = 0;
 public :
-
-/*double wait(chrono::time_point<std::chrono::system_clock> str){
-    chrono::time_point<std::chrono::system_clock> stp;
-    stp = chrono::system_clock::now();
-    chrono::duration<double> dur = stp - str;
-    return dur.count();
-}*/
 
 bool isEmpty(){
     return pq.empty();
 }
 
 int maxTime(chrono::time_point<std::chrono::system_clock> str){
+    // calculate duration from start point
     chrono::time_point<std::chrono::system_clock> stp;
     stp = chrono::system_clock::now();
     chrono::duration<double> dur = stp - str;
     double wT = dur.count();
-    if(wT > 1.5){
+    // if duration is past threshold, find the position in timers
+    // where duration is past threshold and return index
+    // this index will match with order vector
+    if(wT > 3){
             for(int i=0; i<timers.size(); i++){
             if(timers[i] == str){
                 return i;
@@ -38,34 +40,53 @@ int maxTime(chrono::time_point<std::chrono::system_clock> str){
     return -1;
 }
 
-
 void nPatients(int code){
+    // random number (0-3) of new patients added
+    // form severity array with n new patients
 int numPatients = (rand()%4);
         int arr[numPatients];
+        // code 0 indicates window is open: add new patients
         if(code == 0){
-        cout << "Patient severities added: ";
+        cout << "Patients added: ";
         for(int i=0; i<numPatients; i++){ 
+        // random severity 1-3 for each new patient
         arr[i] = (rand()%3+1);
-        cout << arr[i] << " ";
+        // record start time in timer vector + order that patients arrive
         timers.push_back(std::chrono::system_clock::now());
         order.push_back(arr[i]);
+        patientID.push_back(lastPatient+i+1);
+        cout << "P" << lastPatient+i+1 << "(" << arr[i] << ") ";
         }
-        cout << endl;}
-        int proceed = 0;
-        int timercheck = 0;
-        while(timercheck<timers.size() && proceed == 0){
-            proceed += maxTime(timers[timercheck]);
-            timercheck += 1;
+        if(!patientID.empty()){
+            lastPatient = patientID.back();
         }
-        if(proceed == -1 || pq.empty()){
+        cout << endl;
+        }
+        int proceed = -1;
+        // if patients need to be added or line is not empty call maxTime
+        if(numPatients != 0 || !pq.empty()){
+            // proceed will be -1 if wait time is not reached or 0
+            // only the first timer needs to be checked as timers stores
+            // time points in order of arrival, if first timer is not 
+            // past wait time threshold the others are not either
+            proceed = proceed = maxTime(timers[0]);
+        }
+
+        // proceed -1 indicates wait time not reached, add patients > serve
+        if(proceed == -1){
+            // if window is still open, add patients to pq
             if(code == 0){
             for (int i=0; i<numPatients; i++) {
                 pq.push(arr[i]);
             }}
             servePatient(proceed);
         }
+        // proceed 0 indicates wait time reached, serve > add new patients
+        // note that proceed accepts index at which wait time passes
+        // threshold, as timers vector is in order of arrival, the first
+        // timer duration will always be the longest
         else {
-            servePatient(proceed-1);
+            servePatient(proceed);
             if(code == 0){
             for (int i=0; i<numPatients; i++) {
                 pq.push(arr[i]);}
@@ -74,6 +95,10 @@ int numPatients = (rand()%4);
 }
 
 int matchOrderPrio(){
+    // pq generally does not preserve order, arrival order is only
+    // preserved for two of the same element; if severity 3 is added while
+    // 3 is already part of the pq, it will be added behind the existing
+    // as such, the first match returns the correct index 
 for(int i=0; i<order.size(); i++){
     if(order[i] == pq.top()){
         return i;
@@ -83,10 +108,12 @@ return 0;
 }
 
 int matchPrioOrder(int index){
+    // similarly to matching the order vector element with the severity
+    // being served in pq, the same process is done by incrementing
+    // pos until the first match of severity the patient at given index
     priority_queue<int> copy = pq;
     int pos = 0;
 while(!copy.empty()){
-    // 2 1 1 1 | 2 1 1 1 return 0
     if(copy.top() == order.at(index)){
         return pos;
     }
@@ -95,59 +122,70 @@ while(!copy.empty()){
 }
 return 0;
 }
-// THIS WORKS BECAUSE THE FIRST MATCH CAME FIRST
 
-// FOR SAME VALUE, ONE THAT COMES FIRST IS CLOSER TO FRONT
 void servePatient(int code){
+    // base case for no patients to be served
+    if(pq.empty()){
+        cout << "Waiting for customers..." << endl;
+        return;
+    }
+    // for usual case -1, serve patients off of severity
+    // pq automatically sorts in decreasing order
     if(code == -1){
-        cout << "Serving patient with severity: " << pq.top() << endl;
-        order.erase(order.begin()+matchOrderPrio());
-        timers.erase(timers.begin()+matchOrderPrio());
+        int ind = matchOrderPrio();
+        cout << "Serving patient P" <<
+        patientID[ind] << " with severity: " << pq.top() << endl;
+        // erase patient served from order and timers vectors
+        // this is done by calling the match function
+        order.erase(order.begin()+ind);
+        timers.erase(timers.begin()+ind);
+        patientID.erase(patientID.begin()+ind);
         pq.pop();
     }
+    // if wait time has been reached, pq is modified by creating a new pq
+    // in increasing order
     else {
-        cout << "Max wait time reached. Serving patient with severity: ";
+        cout << "Max wait time reached. Serving patient P" <<
+        patientID[code] << " with severity: ";
         cout << order[code] << " first." <<endl;
-        // copy = 2 1 1 1
-        // order = 2 1 1 1
-        // temp = 1 1 1 2
-        // code = 0
         priority_queue<int> copy = pq;
         priority_queue<int, vector<int>, greater<int>> temp;
         while(!copy.empty()){
         temp.push(copy.top());
         copy.pop();
     }
-    int pos = matchPrioOrder(code); // pos = 0
-    for(int i=0;i<pq.size() - pos;i++){ // 4 times, temp = 0
+    // when wait time reached, code is assigned to index of the patient
+    // for which wait time has been reached in the order and timers vectors
+    // this will be 0 as the first arriving customer has waited the longest
+    int pos = matchPrioOrder(code); 
+    // pop reverse pq up until and including patient being served
+    for(int i=0;i<pq.size() - pos;i++){ 
         temp.pop();
     }
-    for(int i=0;i<pos+1;i++){ // 1 times, pq = 1 1 1
+    // pop pq up until and including patient being served
+    for(int i=0;i<pos+1;i++){ 
         pq.pop();
     }
-    while(!temp.empty()){ // pq = 1 1 1
+    // add remaining reverse pq elements to pq 
+    while(!temp.empty()){ 
         pq.push(temp.top());
         temp.pop();
     }
-    // [3 3 2 2 1 1 ]
-    // [1 1 2 2 3 3]
-    // pq.size - pos = 4
-    // [3 3]
-    // [2 1 1]
-        //cout << "Serving patient with severity: " << pq.top() << endl;
+    // erase patient from order and timers vectors
         order.erase(order.begin()+code);
         timers.erase(timers.begin()+code);
-        // implement method to identify and erase lower prio patient
+        patientID.erase(patientID.begin()+code);
     }
 }
 
 void dispLine(){
+    // copy pq and display all elements in order
     priority_queue<int> copy = pq;
     if(copy.empty()){
         cout << "Line is empty." << endl;
     }
     else{
-    cout << "Line: ";
+    cout << "Severity Order: ";
     while (!copy.empty()) {
         cout << copy.top() << " ";
         copy.pop();
@@ -156,78 +194,50 @@ void dispLine(){
 }
 
 void dispOrder(){
-    cout << "Order: ";
+    // display patient arrival order
     if(order.empty()){
-        cout << "Order is empty." << endl;
+        cout << "Line is empty." << endl;
     }
     else{
-    for (int i = 0; i < order.size(); i++){
-        cout << order[i] << " ";}
-    cout << endl;}
+        cout << "Arrival Order: ";
+    for(int i = 0; i < patientID.size(); i++){
+        cout << "P" << patientID[i] << "(" << order[i] << ") ";}
+    cout << endl;
+    }
+
+
 }
 
 };
+
 // driver code
-int main()
-{
+int main() {
+    // initizalize window open time point and patientLine, random seed
     chrono::time_point<std::chrono::system_clock> open = chrono::system_clock::now();
     double close;
     PriorityQueue patientLine;
     srand((unsigned)time(0));
     while (close < 5){ 
         patientLine.nPatients(0);
-        patientLine.dispLine();
+        //patientLine.dispLine();
         patientLine.dispOrder();
 
-
+    // run window for 5 seconds before closing window to new patients
+    // update duration since open and add second delay
     chrono::time_point<std::chrono::system_clock> curtime = chrono::system_clock::now();
     chrono::duration<double> dur = curtime - open;
     close = dur.count();
     this_thread::sleep_for(chrono::seconds(1));
-    //cout << close << endl;
     }
+    // once window has closed, call nPatients with code 1, indicating
+    // that new patients should not be added to the pq
     cout << "Window has closed, no new patients." << endl;
     while(!patientLine.isEmpty()) {
         patientLine.nPatients(1);
-        patientLine.dispLine();
+        //patientLine.dispLine();
         patientLine.dispOrder();
         this_thread::sleep_for(chrono::seconds(1));
     }
-    /*int numPatients[5];
-    int size = sizeof(arr) / sizeof(arr[0]);
-    chrono::time_point<std::chrono::system_clock> timers[5];
-    for(int i=0; i<size; i++){ 
-        arr[i] = (rand()%5)+1;
-        timers[i] = std::chrono::system_clock::now();
-        }
-    // array of patients with varying severity 1-5
-    // defining priority queue
-    
-    // printing array
-    cout << "Array: ";
-    for (auto i : arr) {
-        cout << i << ' ';
-    }
-    cout << endl;
-    // pushing array sequentially one by one
-    for (int i = 0; i < size; i++) {
-        pq.push(arr[i]);
-    }
-    priority_queue<int> pqprint = pq;
-    // printing priority queue
-    int cnt = 0;
-    double waitTimes[size];
-    while (!pq.empty()) {
-        cout << "Serving: " << pq.top()<< endl;
-        for(int i=0; i<5; i++){
-        waitTimes[i] = wait(timers[i]);
-        }
-        pq.pop();
-        for(int j=cnt; j<5; j++){
-            cout << "Time for patient " << j+1 << ": " << waitTimes[j] << endl;
-        }
-        cnt += 1;
-    }*/
 
     return 0;
 }
